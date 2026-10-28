@@ -1,3 +1,5 @@
+For Render Free + Supabase deployment, follow [the free-hosting guide](docs/FREE-HOSTING.md). PostgreSQL records and private object storage survive server restarts.
+
 # BidWave
 
 A React marketplace backed by Node HTTP and SQLite. Visitors can try local guest bidding; signed-in accounts use shared auctions, seller settlement details, persistent notifications, and private payment proof uploads.

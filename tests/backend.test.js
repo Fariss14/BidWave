@@ -328,7 +328,7 @@ test('finalization notifies winner, loser and seller once; seller contacts and Q
   assert.deepEqual(privateAuction.location.coordinates, { latitude: 14.6, longitude: 121.05 });
   await seller.request('/account/seller', { method: 'PUT', body: sellerBody({ phone: '09999999999' }) });
   clock.value = auction.endsAt;
-  app.finalize(); app.finalize();
+  await app.finalize(); await app.finalize();
   const result = (await winner.request('/account/orders')).data.orders[0];
   assert.equal(result.settlement.phone, '09170000000'); assert.equal(result.settlement.methods[0].qrId, qrId);
   assert.equal((await winner.request(`/account/orders/${result.id}/settlement`)).status, 200);
@@ -377,8 +377,9 @@ test('server restarts catch up expired auctions without duplicating outcomes', a
   await bidder.request(`/auctions/${a.id}/bids`, { method: 'POST', body: { amount: 100 } });
   clock.value = a.endsAt;
   const restarted = createApp({ db, locations: directory, env: {}, now: () => clock.value });
+  await restarted.ready;
   assert.equal(db.prepare('SELECT count(*) AS count FROM notifications WHERE user_id = ?').get(user.id).count, 1);
-  restarted.finalize();
+  await restarted.finalize();
   assert.equal(db.prepare('SELECT count(*) AS count FROM notifications WHERE user_id = ?').get(user.id).count, 1);
 });
 
@@ -446,8 +447,8 @@ test('after bidding starts, only extensions are allowed and bidders receive each
   assert.equal(next.status, 200);
   const notifications = (await bidder.request('/account/notifications')).data.notifications;
   assert.equal(notifications.length, 2); assert.ok(notifications.every((n) => n.type === 'deadline_changed' && n.href === `/auctions/${a.id}`));
-  clock.value = a.endsAt; app.finalize(); assert.equal((await bidder.request('/account/orders')).data.orders.length, 0);
-  clock.value = next.data.auction.endsAt; app.finalize();
+  clock.value = a.endsAt; await app.finalize(); assert.equal((await bidder.request('/account/orders')).data.orders.length, 0);
+  clock.value = next.data.auction.endsAt; await app.finalize();
   assert.equal((await bidder.request('/account/orders')).data.orders.length, 1);
   assert.equal((await bidder.request('/account/notifications')).data.notifications.filter((n) => n.type === 'auction_won').length, 1);
 });
@@ -459,7 +460,7 @@ test('expired and finalized listings cannot be reopened, even before the worker 
   clock.value = a.endsAt;
   assert.equal((await seller.request(`/account/listings/${a.id}`)).data.editable, false);
   assert.equal((await seller.request(`/auctions/${a.id}`, { method: 'PATCH', body: { revision: 0, endsAt: clock.value + 3600000 } })).status, 409);
-  app.finalize();
+  await app.finalize();
   const stored = JSON.parse(db.prepare('SELECT data FROM auctions WHERE id = ?').get(a.id).data);
   stored.endsAt = clock.value + 3600000;
   db.prepare('UPDATE auctions SET data = ? WHERE id = ?').run(JSON.stringify(stored), a.id);
@@ -510,7 +511,7 @@ test('seller reviews reject, resubmit and confirm privately with preserved histo
   await seller.request('/account/seller', { method: 'PUT', body: sellerBody() });
   const a = (await seller.request('/auctions', { method: 'POST', body: listingBody() })).data.auction;
   await buyer.request(`/auctions/${a.id}/bids`, { method: 'POST', body: { amount: 100 } });
-  clock.value = a.endsAt; app.finalize();
+  clock.value = a.endsAt; await app.finalize();
   const order = (await buyer.request('/account/orders')).data.orders[0];
   await buyer.request('/account/address', { method: 'PUT', body: addressBody() });
   const first = (await buyer.request(`/account/orders/${order.id}/proof`, { method: 'POST', body: proofBody() })).data.payment;

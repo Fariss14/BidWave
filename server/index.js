@@ -2,10 +2,14 @@ import { createServer } from 'node:http';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve, extname, sep } from 'node:path';
 import { createApp } from './app.js';
+import { openPostgres } from './postgres.js';
 import { openDatabase } from './database.js';
 import { nodeHandler } from './http.js';
 
-const app = createApp({ db: openDatabase(process.env.DATABASE_PATH || 'data/bidwave.sqlite') });
+if (process.env.NODE_ENV === 'production' && !process.env.DATABASE_URL && !process.env.DATABASE_PATH) throw new Error('Set DATABASE_URL for Supabase or DATABASE_PATH on a persistent disk.');
+const db = process.env.DATABASE_URL ? await openPostgres() : openDatabase(process.env.DATABASE_PATH || 'data/bidwave.sqlite');
+const app = createApp({ db });
+await app.ready;
 app.start();
 const api = nodeHandler(app);
 const root = resolve('dist');
@@ -26,6 +30,6 @@ const server = createServer((req, res) => {
 });
 const port = Number(process.env.PORT || 3000);
 server.listen(port, process.env.HOST || '127.0.0.1', () => console.log(`BidWave running at http://localhost:${port}`));
-function shutdown() { app.stop(); server.close(() => { app.db.close(); process.exit(0); }); }
+function shutdown() { app.stop(); server.close(async () => { await app.db.close(); process.exit(0); }); }
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);

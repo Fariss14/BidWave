@@ -11,12 +11,23 @@ export async function readImage(file, label = 'image') {
   const bytes = Buffer.from(await file.arrayBuffer());
   const mime = detectMime(bytes);
   check(mime && mime === file.type, `The ${label} must be a PNG, JPEG, or WebP file with a matching file type.`);
-  return { id: randomUUID(), bytes, mime };
+  return {
+    id: randomUUID(),
+    bytes,
+    mime
+  };
 }
-export function putImage(db, owner, kind, image) {
-  db.prepare('INSERT INTO media VALUES (?, ?, ?, ?, ?)').run(image.id, owner, kind, image.bytes, image.mime);
+export async function putImage(db, owner, kind, image) {
+  await db.prepare('INSERT INTO media VALUES (?, ?, ?, ?, ?)').run(image.id, owner, kind, image.bytes, image.mime);
   return image.id;
 }
 export function imageResponse(row, privateImage = false) {
-  return new Response(row.bytes, { headers: { 'Content-Type': row.mime, 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox", 'Cache-Control': privateImage ? 'private, no-store' : 'public, max-age=31536000, immutable' } });
+  return new Response(row.bytes, {
+    headers: {
+      'Content-Type': row.mime,
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; sandbox",
+      'Cache-Control': privateImage ? 'private, no-store' : 'public, max-age=31536000, immutable'
+    }
+  });
 }

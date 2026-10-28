@@ -61,3 +61,17 @@ export function transaction(db, action) {
   try { const value = action(); db.exec('COMMIT'); return value; }
   catch (error) { db.exec('ROLLBACK'); throw error; }
 }
+
+// Serialize SQLite transactions now that request handlers also support async databases.
+const queues = new WeakMap();
+export async function asyncTransaction(db, action) {
+  if (db.transaction) return db.transaction(action);
+  const previous = queues.get(db) || Promise.resolve();
+  const result = previous.then(async () => {
+    db.exec('BEGIN IMMEDIATE');
+    try { const value = await action(); db.exec('COMMIT'); return value; }
+    catch (error) { db.exec('ROLLBACK'); throw error; }
+  });
+  queues.set(db, result.catch(() => {}));
+  return result;
+}
