@@ -1,3 +1,4 @@
+import { databaseTlsOptions } from './databaseTls.js';
 import pg from 'pg';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { readFile } from 'node:fs/promises';
@@ -15,16 +16,17 @@ export async function openPostgres(env = process.env) {
   const url = new URL(env.DATABASE_URL);
   // Enforce certificate verification, including when a copied URI specifies sslmode=require.
   for (const name of ['sslmode', 'sslcert', 'sslkey', 'sslrootcert']) url.searchParams.delete(name);
-  const pool = new pg.Pool({ connectionString: url.toString(), max: 3, connectionTimeoutMillis: 15000, idleTimeoutMillis: 30000, ssl: { rejectUnauthorized: true, ...(env.DATABASE_CA_CERT ? { ca: env.DATABASE_CA_CERT.replaceAll('\\n', '\n') } : {}) } });
+  const pool = new pg.Pool({ connectionString: url.toString(), max: 3, connectionTimeoutMillis: 15000, idleTimeoutMillis: 30000, ssl: databaseTlsOptions(env.DATABASE_CA_CERT) });
   pool.on('error', () => console.error('Database connection interrupted.'));
   const storage = createObjectStorage(env);
   const db = createPostgresAdapter(pool, storage);
   try {
     const schema = await readFile(new URL('./migrations/postgres.sql', import.meta.url), 'utf8');
+    console.info(env.DATABASE_CA_CERT?.trim() ? 'Database TLS: custom CA certificate loaded; verification enabled.' : 'Database TLS: using system certificates; DATABASE_CA_CERT is not configured.');
     await pool.query(schema);
     await storage.check();
     return db;
-  } catch (error) { await pool.end(); throw error; }
+  } catch (error) { await pool.end(); if (error.code === 'SELF_SIGNED_CERT_IN_CHAIN') throw new Error('Database certificate verification failed. Set DATABASE_CA_CERT in Render to the complete CA certificate downloaded from this Supabase project, then save and redeploy. If already set, verify the value is certificate text and belongs to this project.', { cause: error }); throw error; }
 }
 
 export function createPostgresAdapter(pool, storage) {

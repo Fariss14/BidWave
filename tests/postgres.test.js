@@ -1,3 +1,5 @@
+import { databaseTlsOptions } from '../server/databaseTls.js';
+import { rootCertificates } from 'node:tls';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -78,4 +80,16 @@ test('storage uses private authenticated objects and server-only keys', async ()
   const bad=createObjectStorage({SUPABASE_URL:'https://example.supabase.co',SUPABASE_SECRET_KEY:'sb_secret_test'},async()=>Response.json({public:true}));
   await assert.rejects(bad.check(),/must be private/);
   assert.equal(postgresSql('INSERT OR IGNORE INTO categories VALUES (?, ?, ?)'),'INSERT INTO categories VALUES ($1, $2, $3) ON CONFLICT DO NOTHING');
+});
+
+test('database TLS accepts real and escaped PEM newlines without disabling verification', () => {
+  const pem = rootCertificates[0];
+  assert.deepEqual(databaseTlsOptions(), { rejectUnauthorized: true });
+  for (const value of [pem, pem.replaceAll('\n', '\\n'), '"' + pem.replaceAll('\n', '\\n') + '"']) {
+    const ssl = databaseTlsOptions(value);
+    assert.equal(ssl.rejectUnauthorized, true);
+    assert.equal(ssl.ca[0], pem.trim());
+  }
+  assert.throws(() => databaseTlsOptions('certificate.crt'), /complete PEM/);
+  assert.throws(() => databaseTlsOptions('-----BEGIN CERTIFICATE-----\nbad\n-----END CERTIFICATE-----'), /not a valid/);
 });
